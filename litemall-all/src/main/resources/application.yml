@@ -5,7 +5,15 @@ spring:
     encoding: UTF-8
 
 server:
-  port: 8080
+  port: 443
+
+  ssl:
+      # 证书名称
+      key-store: classpath:SHA256withRSA_www.litemall.shop.jks
+      #密钥库密码
+      key-store-password: 2018
+      key-store-type: JKS
+
 
 logging:
   level:
