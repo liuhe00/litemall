@@ -20,6 +20,9 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 对象存储服务
+ */
 @RestController
 @RequestMapping("/wx/storage")
 @Validated
@@ -57,13 +60,19 @@ public class WxStorageController {
         return ResponseUtil.ok(data);
     }
 
+    /**
+     * 访问存储对象
+     *
+     * @param key 存储对象key
+     * @return
+     */
     @GetMapping("/fetch/{key:.+}")
     public ResponseEntity<Resource> fetch(@PathVariable String key) {
         LitemallStorage litemallStorage = litemallStorageService.findByKey(key);
         if (key == null) {
             return ResponseEntity.notFound().build();
         }
-        if(key.contains("../")){
+        if (key.contains("../")) {
             return ResponseEntity.badRequest().build();
         }
         String type = litemallStorage.getType();
@@ -76,13 +85,19 @@ public class WxStorageController {
         return ResponseEntity.ok().contentType(mediaType).body(file);
     }
 
+    /**
+     * 访问存储对象
+     *
+     * @param key 存储对象key
+     * @return
+     */
     @GetMapping("/download/{key:.+}")
     public ResponseEntity<Resource> download(@PathVariable String key) {
         LitemallStorage litemallStorage = litemallStorageService.findByKey(key);
         if (key == null) {
             return ResponseEntity.notFound().build();
         }
-        if(key.contains("../")){
+        if (key.contains("../")) {
             return ResponseEntity.badRequest().build();
         }
 

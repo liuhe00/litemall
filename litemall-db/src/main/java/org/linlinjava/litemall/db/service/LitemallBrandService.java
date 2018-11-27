@@ -1,14 +1,15 @@
 package org.linlinjava.litemall.db.service;
 
 import com.github.pagehelper.PageHelper;
-import org.linlinjava.litemall.db.domain.LitemallBrandExample;
 import org.linlinjava.litemall.db.dao.LitemallBrandMapper;
-import org.linlinjava.litemall.db.domain.LitemallBrand.Column;
 import org.linlinjava.litemall.db.domain.LitemallBrand;
+import org.linlinjava.litemall.db.domain.LitemallBrand.Column;
+import org.linlinjava.litemall.db.domain.LitemallBrandExample;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -71,6 +72,7 @@ public class LitemallBrandService {
     }
 
     public int updateById(LitemallBrand brand) {
+        brand.setUpdateTime(LocalDateTime.now());
         return brandMapper.updateByPrimaryKeySelective(brand);
     }
 
@@ -79,10 +81,14 @@ public class LitemallBrandService {
     }
 
     public void add(LitemallBrand brand) {
+        brand.setAddTime(LocalDateTime.now());
+        brand.setUpdateTime(LocalDateTime.now());
         brandMapper.insertSelective(brand);
     }
 
     public List<LitemallBrand> all() {
-        return brandMapper.selectByExample(new LitemallBrandExample());
+        LitemallBrandExample example = new LitemallBrandExample();
+        example.or().andDeletedEqualTo(false);
+        return brandMapper.selectByExample(example);
     }
 }

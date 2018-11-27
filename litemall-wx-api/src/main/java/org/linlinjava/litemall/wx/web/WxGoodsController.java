@@ -10,7 +10,6 @@ import org.linlinjava.litemall.core.validator.Sort;
 import org.linlinjava.litemall.db.domain.*;
 import org.linlinjava.litemall.db.service.*;
 import org.linlinjava.litemall.wx.annotation.LoginUser;
-import org.linlinjava.litemall.wx.service.HomeCacheManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,12 +18,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.validation.constraints.NotNull;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 商品服务
+ */
 @RestController
 @RequestMapping("/wx/goods")
 @Validated
@@ -34,7 +35,7 @@ public class WxGoodsController {
     @Autowired
     private LitemallGoodsService goodsService;
     @Autowired
-    private LitemallProductService productService;
+    private LitemallGoodsProductService productService;
     @Autowired
     private LitemallIssueService goodsIssueService;
     @Autowired
@@ -68,23 +69,6 @@ public class WxGoodsController {
      * @param userId 用户ID
      * @param id     商品ID
      * @return 商品详情
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * info: xxx,
-     * userHasCollect: xxx,
-     * issue: xxx,
-     * comment: xxx,
-     * specificationList: xxx,
-     * productList: xxx,
-     * attribute: xxx,
-     * brand: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
      */
     @GetMapping("detail")
     public Object detail(@LoginUser Integer userId, @NotNull Integer id) {
@@ -99,13 +83,19 @@ public class WxGoodsController {
         Object specificationList = goodsSpecificationService.getSpecificationVoList(id);
 
         // 商品规格对应的数量和价格
-        List<LitemallProduct> productList = productService.queryByGid(id);
+        List<LitemallGoodsProduct> productList = productService.queryByGid(id);
 
         // 商品问题，这里是一些通用问题
         List<LitemallIssue> issue = goodsIssueService.query();
 
         // 商品品牌商
-        LitemallBrand brand = brandService.findById(info.getBrandId());
+        Integer brandId = info.getBrandId();
+        LitemallBrand brand = null;
+        if (brandId == 0) {
+            brand = new LitemallBrand();
+        } else {
+            brand = brandService.findById(info.getBrandId());
+        }
 
         // 评论
         List<LitemallComment> comments = commentService.queryGoodsByGid(id, 0, 2);
@@ -138,7 +128,6 @@ public class WxGoodsController {
         // 记录用户的足迹
         if (userId != null) {
             LitemallFootprint footprint = new LitemallFootprint();
-            footprint.setAddTime(LocalDateTime.now());
             footprint.setUserId(userId);
             footprint.setGoodsId(id);
             footprintService.add(footprint);
@@ -162,23 +151,9 @@ public class WxGoodsController {
 
     /**
      * 商品分类类目
-     * <p>
-     * TODO 可能应该合并到WxCatalogController中
      *
      * @param id 分类类目ID
      * @return 商品分类类目
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * currentCategory: xxx,
-     * parentCategory: xxx,
-     * brotherCategory: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
      */
     @GetMapping("category")
     public Object category(@NotNull Integer id) {
@@ -207,29 +182,17 @@ public class WxGoodsController {
      * 1. 这里的前五个参数都是可选的，甚至都是空
      * 2. 用户是可选登录，如果登录，则记录用户的搜索关键字
      *
-     * @param categoryId 分类类目ID
-     * @param brandId    品牌商ID
-     * @param keyword    关键字
-     * @param isNew      是否新品
-     * @param isHot      是否热买
+     * @param categoryId 分类类目ID，可选
+     * @param brandId    品牌商ID，可选
+     * @param keyword    关键字，可选
+     * @param isNew      是否新品，可选
+     * @param isHot      是否热买，可选
      * @param userId     用户ID
      * @param page       分页页数
      * @param size       分页大小
-     * @param sort       排序方式
+     * @param sort       排序方式，支持"add_time", "retail_price"或"name"
      * @param order      排序类型，顺序或者降序
      * @return 根据条件搜素的商品详情
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * goodsList: xxx,
-     * filterCategoryList: xxx,
-     * count: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
      */
     @GetMapping("list")
     public Object list(Integer categoryId, Integer brandId, String keyword, Boolean isNew, Boolean isHot,
@@ -242,7 +205,6 @@ public class WxGoodsController {
         //添加到搜索历史
         if (userId != null && !StringUtils.isNullOrEmpty(keyword)) {
             LitemallSearchHistory searchHistoryVo = new LitemallSearchHistory();
-            searchHistoryVo.setAddTime(LocalDateTime.now());
             searchHistoryVo.setKeyword(keyword);
             searchHistoryVo.setUserId(userId);
             searchHistoryVo.setFrom("wx");
@@ -270,21 +232,9 @@ public class WxGoodsController {
     }
 
     /**
-     * 新品首发页面的横幅数据
-     * <p>
-     * TODO 其实可以删除
+     * 新品首发页面的横幅
      *
-     * @return 新品首发页面的栏目数据
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * bannerInfo: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
+     * @return 新品首发页面的横幅
      */
     @GetMapping("new")
     public Object newGoods() {
@@ -299,21 +249,9 @@ public class WxGoodsController {
     }
 
     /**
-     * 人气推荐页面的横幅数据
-     * <p>
-     * TODO 其实可以删除
+     * 人气推荐页面的横幅
      *
-     * @return 人气推荐页面的栏目数据
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * bannerInfo: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
+     * @return 人气推荐页面的横幅
      */
     @GetMapping("hot")
     public Object hotGoods() {
@@ -327,19 +265,10 @@ public class WxGoodsController {
     }
 
     /**
-     * 商品页面推荐商品
+     * 商品详情页面“大家都在看”推荐商品
      *
-     * @return 商品页面推荐商品
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * goodsList: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
+     * @param id, 商品ID
+     * @return 商品详情页面推荐商品
      */
     @GetMapping("related")
     public Object related(@NotNull Integer id) {
@@ -363,16 +292,6 @@ public class WxGoodsController {
      * 在售的商品总数
      *
      * @return 在售的商品总数
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * goodsCount: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
      */
     @GetMapping("count")
     public Object count() {

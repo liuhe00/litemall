@@ -2,10 +2,10 @@ package org.linlinjava.litemall.wx.web;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.linlinjava.litemall.core.system.SystemConfig;
 import org.linlinjava.litemall.core.util.ResponseUtil;
 import org.linlinjava.litemall.db.domain.*;
 import org.linlinjava.litemall.db.service.*;
-import org.linlinjava.litemall.core.system.SystemConfig;
 import org.linlinjava.litemall.wx.service.HomeCacheManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
@@ -19,6 +19,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 首页服务
+ */
 @RestController
 @RequestMapping("/wx/home")
 @Validated
@@ -51,25 +54,9 @@ public class WxHomeController {
     }
 
     /**
-     * app首页
+     * 首页数据
      *
-     * @return app首页相关信息
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * banner: xxx,
-     * channel: xxx,
-     * newGoodsList: xxx,
-     * hotGoodsList: xxx,
-     * topicList: xxx,
-     * grouponList: xxx,
-     * floorGoodsList: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
+     * @return 首页数据
      */
     @GetMapping("/index")
     public Object index() {
@@ -99,24 +86,8 @@ public class WxHomeController {
         List<LitemallTopic> topicList = topicService.queryList(0, SystemConfig.getTopicLimit());
         data.put("topicList", topicList);
 
-        //优惠专区
-        List<LitemallGrouponRules> grouponRules = grouponRulesService.queryByIndex(0, 5);
-        List<LitemallGoods> grouponGoods = new ArrayList<>();
-        List<Map<String, Object>> grouponList = new ArrayList<>();
-        for (LitemallGrouponRules rule : grouponRules) {
-            LitemallGoods goods = goodsService.findByIdVO(rule.getGoodsId());
-            if (goods == null)
-                continue;
-
-            if (!grouponGoods.contains(goods)) {
-                Map<String, Object> item = new HashMap<>();
-                item.put("goods", goods);
-                item.put("groupon_price", goods.getRetailPrice().subtract(rule.getDiscount()));
-                item.put("groupon_member", rule.getDiscountMember());
-                grouponList.add(item);
-                grouponGoods.add(goods);
-            }
-        }
+        //团购专区
+        List<Map<String, Object>> grouponList = grouponRulesService.queryList(0, 5);
         data.put("grouponList", grouponList);
 
         List<Map> categoryList = new ArrayList<>();

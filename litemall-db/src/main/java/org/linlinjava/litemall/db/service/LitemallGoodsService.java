@@ -1,23 +1,23 @@
 package org.linlinjava.litemall.db.service;
 
 import com.github.pagehelper.PageHelper;
+import org.linlinjava.litemall.db.dao.LitemallGoodsMapper;
 import org.linlinjava.litemall.db.domain.LitemallGoods;
 import org.linlinjava.litemall.db.domain.LitemallGoods.Column;
-import org.linlinjava.litemall.db.dao.LitemallGoodsMapper;
 import org.linlinjava.litemall.db.domain.LitemallGoodsExample;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class LitemallGoodsService {
+    Column[] columns = new Column[]{Column.id, Column.name, Column.brief, Column.picUrl, Column.isHot, Column.isNew, Column.counterPrice, Column.retailPrice};
     @Resource
     private LitemallGoodsMapper goodsMapper;
-
-    Column[] columns = new Column[]{Column.id, Column.name, Column.brief, Column.picUrl, Column.isHot, Column.isNew, Column.counterPrice, Column.retailPrice};
 
     /**
      * 获取热卖商品
@@ -171,7 +171,11 @@ public class LitemallGoodsService {
         if (!StringUtils.isEmpty(name)) {
             criteria.andNameLike("%" + name + "%");
         }
-        criteria.andIsOnSaleEqualTo(true).andDeletedEqualTo(false);
+        criteria.andDeletedEqualTo(false);
+
+        if (!StringUtils.isEmpty(sort) && !StringUtils.isEmpty(order)) {
+            example.setOrderByClause(sort + " " + order);
+        }
 
         PageHelper.startPage(page, size);
         return goodsMapper.selectByExampleWithBLOBs(example);
@@ -187,7 +191,7 @@ public class LitemallGoodsService {
         if (!StringUtils.isEmpty(name)) {
             criteria.andNameLike("%" + name + "%");
         }
-        criteria.andIsOnSaleEqualTo(true).andDeletedEqualTo(false);
+        criteria.andDeletedEqualTo(false);
 
         return (int) goodsMapper.countByExample(example);
     }
@@ -229,6 +233,7 @@ public class LitemallGoodsService {
     }
 
     public int updateById(LitemallGoods goods) {
+        goods.setUpdateTime(LocalDateTime.now());
         return goodsMapper.updateByPrimaryKeySelective(goods);
     }
 
@@ -237,6 +242,8 @@ public class LitemallGoodsService {
     }
 
     public void add(LitemallGoods goods) {
+        goods.setAddTime(LocalDateTime.now());
+        goods.setUpdateTime(LocalDateTime.now());
         goodsMapper.insertSelective(goods);
     }
 

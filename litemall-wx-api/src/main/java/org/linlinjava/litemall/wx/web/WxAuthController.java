@@ -35,6 +35,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.linlinjava.litemall.wx.util.WxResponseCode.*;
+
+/**
+ * 鉴权服务
+ */
 @RestController
 @RequestMapping("/wx/auth")
 @Validated
@@ -56,18 +61,6 @@ public class WxAuthController {
      * @param body    请求内容，{ username: xxx, password: xxx }
      * @param request 请求对象
      * @return 登录结果
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * token: xxx,
-     * tokenExpire: xxx,
-     * userInfo: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
      */
     @PostMapping("login")
     public Object login(@RequestBody String body, HttpServletRequest request) {
@@ -89,7 +82,7 @@ public class WxAuthController {
 
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
         if (!encoder.matches(password, user.getPassword())) {
-            return ResponseUtil.fail(403, "账号密码不对");
+            return ResponseUtil.fail(AUTH_INVALID_ACCOUNT, "账号密码不对");
         }
 
         // userInfo
@@ -113,18 +106,6 @@ public class WxAuthController {
      * @param wxLoginInfo 请求内容，{ code: xxx, userInfo: xxx }
      * @param request     请求对象
      * @return 登录结果
-     * 成功则
-     * {
-     * errno: 0,
-     * errmsg: '成功',
-     * data:
-     * {
-     * token: xxx,
-     * tokenExpire: xxx,
-     * userInfo: xxx
-     * }
-     * }
-     * 失败则 { errno: XXX, errmsg: XXX }
      */
     @PostMapping("login_by_weixin")
     public Object loginByWeixin(@RequestBody WxLoginInfo wxLoginInfo, HttpServletRequest request) {
@@ -161,13 +142,12 @@ public class WxAuthController {
             user.setStatus((byte) 0);
             user.setLastLoginTime(LocalDateTime.now());
             user.setLastLoginIp(IpUtil.client(request));
-            user.setAddTime(LocalDateTime.now());
 
             userService.add(user);
         } else {
             user.setLastLoginTime(LocalDateTime.now());
             user.setLastLoginIp(IpUtil.client(request));
-            if(userService.updateById(user) == 0){
+            if (userService.updateById(user) == 0) {
                 return ResponseUtil.updatedDataFailed();
             }
         }
@@ -193,22 +173,22 @@ public class WxAuthController {
     @PostMapping("regCaptcha")
     public Object registerCaptcha(@RequestBody String body) {
         String phoneNumber = JacksonUtil.parseString(body, "mobile");
-        if(StringUtils.isEmpty(phoneNumber)){
+        if (StringUtils.isEmpty(phoneNumber)) {
             return ResponseUtil.badArgument();
         }
-        if(!RegexUtil.isMobileExact(phoneNumber)){
+        if (!RegexUtil.isMobileExact(phoneNumber)) {
             return ResponseUtil.badArgumentValue();
         }
 
-        String code = CharUtil.getRandomNum(6);
-        boolean successful = notifyService.notifySmsTemplate(phoneNumber, NotifyType.CAPTCHA, new String[]{code});
-        if(!successful){
-            return ResponseUtil.fail(404, "小程序后台验证码服务不支持");
+        if (!notifyService.isSmsEnable()) {
+            return ResponseUtil.fail(AUTH_CAPTCHA_UNSUPPORT, "小程序后台验证码服务不支持");
         }
+        String code = CharUtil.getRandomNum(6);
+        notifyService.notifySmsTemplate(phoneNumber, NotifyType.CAPTCHA, new String[]{code});
 
-        successful = CaptchaCodeManager.addToCache(phoneNumber, code);
-        if(!successful){
-            return ResponseUtil.fail(404, "验证码未超时1分钟，不能发送");
+        boolean successful = CaptchaCodeManager.addToCache(phoneNumber, code);
+        if (!successful) {
+            return ResponseUtil.fail(AUTH_CAPTCHA_FREQUENCY, "验证码未超时1分钟，不能发送");
         }
 
         return ResponseUtil.ok();
@@ -245,51 +225,51 @@ public class WxAuthController {
         String username = JacksonUtil.parseString(body, "username");
         String password = JacksonUtil.parseString(body, "password");
         String mobile = JacksonUtil.parseString(body, "mobile");
-        String captcha = JacksonUtil.parseString(body, "captcha");
         String code = JacksonUtil.parseString(body, "code");
+        String wxCode = JacksonUtil.parseString(body, "wxCode");
 
         if (StringUtils.isEmpty(username) || StringUtils.isEmpty(password) || StringUtils.isEmpty(mobile)
-            || StringUtils.isEmpty(captcha) || StringUtils.isEmpty(code)) {
+                || StringUtils.isEmpty(wxCode) || StringUtils.isEmpty(code)) {
             return ResponseUtil.badArgument();
         }
 
         List<LitemallUser> userList = userService.queryByUsername(username);
         if (userList.size() > 0) {
-            return ResponseUtil.fail(403, "用户名已注册");
+            return ResponseUtil.fail(AUTH_NAME_REGISTERED, "用户名已注册");
         }
 
         userList = userService.queryByMobile(mobile);
         if (userList.size() > 0) {
-            return ResponseUtil.fail(403, "手机号已注册");
+            return ResponseUtil.fail(AUTH_MOBILE_REGISTERED, "手机号已注册");
         }
         if (!RegexUtil.isMobileExact(mobile)) {
-            return ResponseUtil.fail(403, "手机号格式不正确");
+            return ResponseUtil.fail(AUTH_INVALID_MOBILE, "手机号格式不正确");
         }
         //判断验证码是否正确
         String cacheCode = CaptchaCodeManager.getCachedCaptcha(mobile);
         if (cacheCode == null || cacheCode.isEmpty() || !cacheCode.equals(code)) {
-            return ResponseUtil.fail(403, "验证码错误");
+            return ResponseUtil.fail(AUTH_CAPTCHA_UNMATCH, "验证码错误");
         }
 
         String openId = null;
         try {
-            WxMaJscode2SessionResult result = this.wxService.getUserService().getSessionInfo(code);
+            WxMaJscode2SessionResult result = this.wxService.getUserService().getSessionInfo(wxCode);
             openId = result.getOpenid();
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseUtil.fail(403, "openid 获取失败");
+            return ResponseUtil.fail(AUTH_OPENID_UNACCESS, "openid 获取失败");
         }
         userList = userService.queryByOpenid(openId);
-        if(userList.size() > 1){
-            return ResponseUtil.fail(403, "openid 存在多个");
+        if (userList.size() > 1) {
+            return ResponseUtil.serious();
         }
-        if(userList.size() == 1){
-          LitemallUser checkUser = userList.get(0);
-          String checkUsername = checkUser.getUsername();
-          String checkPassword = checkUser.getPassword();
-          if(!checkUsername.equals(openId) || !checkPassword.equals(openId)){
-              return ResponseUtil.fail(403, "openid已绑定账号");
-          }
+        if (userList.size() == 1) {
+            LitemallUser checkUser = userList.get(0);
+            String checkUsername = checkUser.getUsername();
+            String checkPassword = checkUser.getPassword();
+            if (!checkUsername.equals(openId) || !checkPassword.equals(openId)) {
+                return ResponseUtil.fail(AUTH_OPENID_BINDED, "openid已绑定账号");
+            }
         }
 
         LitemallUser user = null;
@@ -307,7 +287,6 @@ public class WxAuthController {
         user.setStatus((byte) 0);
         user.setLastLoginTime(LocalDateTime.now());
         user.setLastLoginIp(IpUtil.client(request));
-        user.setAddTime(LocalDateTime.now());
         userService.add(user);
 
         // userInfo
@@ -353,14 +332,14 @@ public class WxAuthController {
         //判断验证码是否正确
         String cacheCode = CaptchaCodeManager.getCachedCaptcha(mobile);
         if (cacheCode == null || cacheCode.isEmpty() || !cacheCode.equals(code))
-            return ResponseUtil.fail(403, "验证码错误");
+            return ResponseUtil.fail(AUTH_CAPTCHA_UNMATCH, "验证码错误");
 
         List<LitemallUser> userList = userService.queryByMobile(mobile);
         LitemallUser user = null;
         if (userList.size() > 1) {
             return ResponseUtil.serious();
         } else if (userList.size() == 0) {
-            return ResponseUtil.fail(403, "手机号未注册");
+            return ResponseUtil.fail(AUTH_MOBILE_UNREGISTERED, "手机号未注册");
         } else {
             user = userList.get(0);
         }
@@ -369,7 +348,7 @@ public class WxAuthController {
         String encodedPassword = encoder.encode(password);
         user.setPassword(encodedPassword);
 
-        if(userService.updateById(user) == 0){
+        if (userService.updateById(user) == 0) {
             return ResponseUtil.updatedDataFailed();
         }
 
@@ -385,7 +364,7 @@ public class WxAuthController {
         String phone = phoneNumberInfo.getPhoneNumber();
         LitemallUser user = userService.findById(userId);
         user.setMobile(phone);
-        if(userService.updateById(user) == 0){
+        if (userService.updateById(user) == 0) {
             return ResponseUtil.updatedDataFailed();
         }
         return ResponseUtil.ok();

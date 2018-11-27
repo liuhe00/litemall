@@ -6,21 +6,19 @@ import org.linlinjava.litemall.admin.annotation.LoginAdmin;
 import org.linlinjava.litemall.core.notify.NotifyService;
 import org.linlinjava.litemall.core.notify.NotifyType;
 import org.linlinjava.litemall.core.util.JacksonUtil;
+import org.linlinjava.litemall.core.util.ResponseUtil;
 import org.linlinjava.litemall.core.validator.Order;
 import org.linlinjava.litemall.core.validator.Sort;
 import org.linlinjava.litemall.db.domain.*;
-import org.linlinjava.litemall.db.service.LitemallOrderGoodsService;
-import org.linlinjava.litemall.db.service.LitemallOrderService;
-import org.linlinjava.litemall.db.service.LitemallProductService;
-import org.linlinjava.litemall.db.service.LitemallUserService;
+import org.linlinjava.litemall.db.service.*;
 import org.linlinjava.litemall.db.util.OrderUtil;
-import org.linlinjava.litemall.core.util.ResponseUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,6 +28,8 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static org.linlinjava.litemall.admin.util.AdminResponseCode.*;
 
 @RestController
 @RequestMapping("/admin/order")
@@ -45,9 +45,11 @@ public class AdminOrderController {
     @Autowired
     private LitemallOrderService orderService;
     @Autowired
-    private LitemallProductService productService;
+    private LitemallGoodsProductService productService;
     @Autowired
     private LitemallUserService userService;
+    @Autowired
+    private LitemallCommentService commentService;
 
     @Autowired
     private NotifyService notifyService;
@@ -59,7 +61,7 @@ public class AdminOrderController {
                        @RequestParam(defaultValue = "1") Integer page,
                        @RequestParam(defaultValue = "10") Integer limit,
                        @Sort @RequestParam(defaultValue = "add_time") String sort,
-                       @Order @RequestParam(defaultValue = "desc") String order){
+                       @Order @RequestParam(defaultValue = "desc") String order) {
         if (adminId == null) {
             return ResponseUtil.unlogin();
         }
@@ -124,10 +126,8 @@ public class AdminOrderController {
 
         // 如果订单不是退款状态，则不能退款
         if (!order.getOrderStatus().equals(OrderUtil.STATUS_REFUND)) {
-            return ResponseUtil.fail(403, "订单不能确认收货");
+            return ResponseUtil.fail(ORDER_CONFIRM_NOT_ALLOWED, "订单不能确认收货");
         }
-
-        Integer version = order.getVersion();
 
         // 开启事务管理
         DefaultTransactionDefinition def = new DefaultTransactionDefinition();
@@ -136,25 +136,23 @@ public class AdminOrderController {
         try {
             // 设置订单取消状态
             order.setOrderStatus(OrderUtil.STATUS_REFUND_CONFIRM);
-            if(orderService.updateByIdWithVersion(version, order) == 0) {
-                throw new Exception("跟新数据已失效");
+            if (orderService.updateWithOptimisticLocker(order) == 0) {
+                throw new Exception("更新数据已失效");
             }
 
             // 商品货品数量增加
             List<LitemallOrderGoods> orderGoodsList = orderGoodsService.queryByOid(orderId);
             for (LitemallOrderGoods orderGoods : orderGoodsList) {
                 Integer productId = orderGoods.getProductId();
-                LitemallProduct product = productService.findById(productId);
-                Integer number = product.getNumber() + orderGoods.getNumber();
-                product.setNumber(number);
-                if(productService.updateById(product) == 0){
-                    throw new Exception("跟新数据已失效");
+                Short number = orderGoods.getNumber();
+                if (productService.addStock(productId, number) == 0) {
+                    throw new Exception("商品货品库存增加失败");
                 }
             }
         } catch (Exception ex) {
             txManager.rollback(status);
             logger.error("系统内部错误", ex);
-            return ResponseUtil.fail(403, "订单退款失败");
+            return ResponseUtil.fail(ORDER_REFUND_FAILED, "订单退款失败");
         }
 
         //TODO 发送邮件和短信通知，这里采用异步发送
@@ -201,18 +199,16 @@ public class AdminOrderController {
             return ResponseUtil.badArgument();
         }
 
-        Integer version = order.getVersion();
-
         // 如果订单不是已付款状态，则不能发货
         if (!order.getOrderStatus().equals(OrderUtil.STATUS_PAY)) {
-            return ResponseUtil.fail(403, "订单不能确认收货");
+            return ResponseUtil.fail(ORDER_CONFIRM_NOT_ALLOWED, "订单不能确认收货");
         }
 
         order.setOrderStatus(OrderUtil.STATUS_SHIP);
         order.setShipSn(shipSn);
         order.setShipChannel(shipChannel);
         order.setShipTime(LocalDateTime.now());
-        if(orderService.updateByIdWithVersion(version, order) == 0){
+        if (orderService.updateWithOptimisticLocker(order) == 0) {
             return ResponseUtil.updatedDateExpired();
         }
 
@@ -220,6 +216,48 @@ public class AdminOrderController {
         // 发货会发送通知短信给用户:          *
         // "您的订单已经发货，快递公司 {1}，快递单 {2} ，请注意查收"
         notifyService.notifySmsTemplate(order.getMobile(), NotifyType.SHIP, new String[]{shipChannel, shipSn});
+
+        return ResponseUtil.ok();
+    }
+
+
+    /**
+     * 回复订单商品
+     *
+     * @param adminId 管理员ID
+     * @param body    订单信息，{ orderId：xxx }
+     * @return 订单操作结果
+     * 成功则 { errno: 0, errmsg: '成功' }
+     * 失败则 { errno: XXX, errmsg: XXX }
+     */
+    @PostMapping("reply")
+    public Object reply(@LoginAdmin Integer adminId, @RequestBody String body) {
+        if (adminId == null) {
+            return ResponseUtil.unlogin();
+        }
+
+        Integer commentId = JacksonUtil.parseInteger(body, "commentId");
+        if (commentId == null || commentId == 0) {
+            return ResponseUtil.badArgument();
+        }
+        // 目前只支持回复一次
+        if (commentService.findById(commentId) != null) {
+            return ResponseUtil.fail(ORDER_REPLY_EXIST, "订单商品已回复！");
+        }
+        String content = JacksonUtil.parseString(body, "content");
+        if (StringUtils.isEmpty(content)) {
+            return ResponseUtil.badArgument();
+        }
+        // 创建评价回复
+        LitemallComment comment = new LitemallComment();
+        comment.setType((byte) 2);
+        comment.setValueId(commentId);
+        comment.setContent(content);
+        comment.setUserId(0);                 // 评价回复没有用
+        comment.setStar((short) 0);           // 评价回复没有用
+        comment.setHasPicture(false);        // 评价回复没有用
+        comment.setPicUrls(new String[]{});  // 评价回复没有用
+        commentService.save(comment);
 
         return ResponseUtil.ok();
     }
@@ -247,8 +285,6 @@ public class AdminOrderController {
                 continue;
             }
 
-            Integer version = order.getVersion();
-
             // 开启事务管理
             DefaultTransactionDefinition def = new DefaultTransactionDefinition();
             def.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
@@ -257,8 +293,8 @@ public class AdminOrderController {
                 // 设置订单已取消状态
                 order.setOrderStatus(OrderUtil.STATUS_AUTO_CANCEL);
                 order.setEndTime(LocalDateTime.now());
-                if(orderService.updateByIdWithVersion(version, order) == 0){
-                    throw new Exception("跟新数据已失效");
+                if (orderService.updateWithOptimisticLocker(order) == 0) {
+                    throw new Exception("更新数据已失效");
                 }
 
                 // 商品货品数量增加
@@ -266,11 +302,10 @@ public class AdminOrderController {
                 List<LitemallOrderGoods> orderGoodsList = orderGoodsService.queryByOid(orderId);
                 for (LitemallOrderGoods orderGoods : orderGoodsList) {
                     Integer productId = orderGoods.getProductId();
-                    LitemallProduct product = productService.findById(productId);
-                    Integer number = product.getNumber() + orderGoods.getNumber();
-                    product.setNumber(number);
-                    if(productService.updateById(product) == 0){
-                        throw new Exception("跟新数据失败");
+                    LitemallGoodsProduct product = productService.findById(productId);
+                    Short number = orderGoods.getNumber();
+                    if (productService.addStock(productId, number) == 0) {
+                        throw new Exception("商品货品库存增加失败");
                     }
                 }
             } catch (Exception ex) {
@@ -313,16 +348,43 @@ public class AdminOrderController {
                 continue;
             }
 
-            Integer version = order.getVersion();
-
             // 设置订单已取消状态
             order.setOrderStatus(OrderUtil.STATUS_AUTO_CONFIRM);
             order.setConfirmTime(now);
-            if(orderService.updateByIdWithVersion(version, order) == 0){
+            if (orderService.updateWithOptimisticLocker(order) == 0) {
                 logger.info("订单 ID=" + order.getId() + " 数据已经更新，放弃自动确认收货");
-            }
-            else{
+            } else {
                 logger.info("订单 ID=" + order.getId() + " 已经超期自动确认收货");
+            }
+        }
+    }
+
+    /**
+     * 可评价订单商品超期
+     * <p>
+     * 定时检查订单商品评价情况，如果确认商品超时七天则取消可评价状态
+     * 定时时间是每天凌晨4点。
+     */
+    @Scheduled(cron = "0 0 4 * * ?")
+    public void checkOrderComment() {
+        logger.info("系统开启任务检查订单是否已经超期未评价");
+
+        LocalDateTime now = LocalDateTime.now();
+        List<LitemallOrder> orderList = orderService.queryComment();
+        for (LitemallOrder order : orderList) {
+            LocalDateTime confirm = order.getConfirmTime();
+            LocalDateTime expired = confirm.plusDays(7);
+            if (expired.isAfter(now)) {
+                continue;
+            }
+
+            order.setComments((short) 0);
+            orderService.updateWithOptimisticLocker(order);
+
+            List<LitemallOrderGoods> orderGoodsList = orderGoodsService.queryByOid(order.getId());
+            for (LitemallOrderGoods orderGoods : orderGoodsList) {
+                orderGoods.setComment(-1);
+                orderGoodsService.updateById(orderGoods);
             }
         }
     }

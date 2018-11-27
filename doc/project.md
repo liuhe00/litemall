@@ -17,7 +17,7 @@ litemall是一个简单的商场系统，基于现有的开源项目，重新实
 
   由litemall-wx-api模块、litemall-wx模块和renard-wx模块组成；
 
-* 后台管理子系统(admin)
+* 管理后台子系统(admin)
 
   由litemall-admin-api模块和litemall-admin模块组成。
 
@@ -174,8 +174,8 @@ litemall是一个简单的商场系统，基于现有的开源项目，重新实
 如图所示，当前开发阶段的方案：
 
 * MySQL数据访问地址`jdbc:mysql://localhost:3306/litemall`
-* litemall-wx-api后台服务地址`http://localhost:8080/wx`，数据则来自MySQL
-* litemall-admin-api后台服务地址`http://localhost:8080/admin`,数据则来自MySQL
+* litemall-wx-api后端服务地址`http://localhost:8080/wx`，数据则来自MySQL
+* litemall-admin-api后端服务地址`http://localhost:8080/admin`,数据则来自MySQL
 * litemall-admin前端访问地址`http://localhost:9527`, 数据来自litemall-admin-api
 * litemall-wx没有前端访问地址，而是直接在微信小程序工具上编译测试开发，最终会部署到微信官方平台（即不需要自己部署web服务器），而数据则来自litemall-wx-api
 
@@ -262,7 +262,7 @@ litemall是一个简单的商场系统，基于现有的开源项目，重新实
 
 1. 安装微信小程序开发工具；
 2. 导入本项目的litemall-wx模块(或者renard-wx模块)文件夹；
-3. 编译前，请确定litemall-all模块已经运行，而litemall-wx模块的config文件夹中的api.js已经设置正确的后台数据服务地址；
+3. 编译前，请确定litemall-all模块已经运行，而litemall-wx模块的config文件夹中的api.js已经设置正确的后端数据服务地址；
 4. 点击`编译`，如果出现数据和图片，则运行正常
 
 注意：
@@ -693,16 +693,16 @@ litemall:
 最后，**如果项目部署云主机，则根据开发者的部署环境在以下文件中或代码中修改相应的配置。**
 
 1. MySQL数据库设置合适的用户名和密码信息；
-2. 后台服务模块设置合适的配置信息；
-3. 小商场前端litemall-wx模块`config/api.js`的`WxApiRoot`设置小商场后台服务的服务地址；
-4. 管理后台前端litemall-admin模块`config/dep.env.js`中的`BASE_API`设置管理后台后台服务的服务地址。
+2. 后端服务模块设置合适的配置信息；
+3. 小商场前端litemall-wx模块`config/api.js`的`WxApiRoot`设置小商场后端服务的服务地址；
+4. 管理后台前端litemall-admin模块`config/dep.env.js`中的`BASE_API`设置管理后台后端服务的服务地址。
 
 实际上，最终的部署方案是灵活的：
 
 * 可以是同一云主机中安装一个Spring Boot服务，同时提供litemall-admin、litemall-admin-api和litemall-wx-api三种服务
 * 可以单一云主机中仅安装一个tomcat/nginx服务器部署litemall-admin静态页面分发服务，
-  然后部署两个Spring Boot的后台服务；
-* 也可以把litemall-admin静态页面托管第三方cdn，然后开发者部署两个后台服务
+  然后部署两个Spring Boot的后端服务；
+* 也可以把litemall-admin静态页面托管第三方cdn，然后开发者部署两个后端服务
 * 当然，甚至多个服务器，采用集群式并发提供服务。
 
 注意
@@ -883,8 +883,8 @@ cd litemall
 1. 专门的云数据库部署数据
 2. 专门的云存储方案
 3. 专门的CDN分发管理后台的静态文件
-4. 一台云主机部署管理后台的后台服务
-5. 一台或多台云主机部署小商场的后台服务
+4. 一台云主机部署管理后台的后端服务
+5. 一台或多台云主机部署小商场的后端服务
 
 虽然由于环境原因没有正式测试过，但是这种简单的集群式场景应该是可行的。
 在1.5.2节中所演示的三个服务是独立的，因此延伸到这里分布式是非常容易的。
@@ -905,10 +905,10 @@ cd litemall
 注意
 > `www.example.com`仅作为实例，不是真实环境下的域名。
 
-这里列举一种基于1.5.2的单机多服务上线方案，即：
-* 一个litemall-admin-api服务，独立提供管理后台前端的后台数据；
-* 一个litemall-wx-api服务，独立提供小商城前端的后台数据；
-* 一个nginx，对外出来litemall-admin的静态文件。
+这里列举一种基于1.5.1的单机单服务上线方案，即一个all后端服务，同时提供三种数据：
+* 提供管理后台的前端文件；
+* 提供管理后台前端所需要的数据；
+* 提供小商城前端所需要的数据。
 
 ![](pic1/1-12.png)
 
@@ -924,9 +924,6 @@ cd litemall
 ### 1.6.2 nginx
 
 https://www.digitalocean.com/community/tutorials/how-to-install-nginx-on-ubuntu-16-04
-
-在部署方案中建议安装了tomcat来访问管理后台，而这里上线方案中则建议使用nginx，
-此时我们可以卸载tomcat（当然不卸载也可以，即同时支持8080端口访问）。
 
 #### 1.6.2.1 nginx安装
 
@@ -993,39 +990,13 @@ https://www.example.com
 
 此时，可以看到https协议的nginx欢迎页面。
 
-#### 1.6.2.3 litemall-admin静态文件
+#### 1.6.2.3 反向代理Spring Boot后端
 
 修改`/etc/nginx/nginx.conf`文件，配置nginx静态web文件目录
 ```
 server {
     location / {
-	    root /home/ubuntu/deploy/litemall-admin/dist;
-		index index.html index.htm;
-	}
-}
-```
-
-打开浏览器，输入以下地址：
-```
-https://www.example.com
-```
-
-此时，可以看到管理后台的页面。
-
-#### 1.6.2.3 反向代理两个个后台服务
-
-继续修改`/etc/nginx/nginx.conf`文件，配置nginx静态web文件目录
-```
-server {
-	location ^~ /wx {
-        proxy_pass  http://localhost:8082;
-        proxy_set_header    Host    $host;
-        proxy_set_header    X-Real-IP   $remote_addr;
-        proxy_set_header    X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location ^~ /admin {
-        proxy_pass  http://localhost:8083;
+        proxy_pass  http://localhost:8080;
         proxy_set_header    Host    $host;
         proxy_set_header    X-Real-IP   $remote_addr;
         proxy_set_header    X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -1037,9 +1008,10 @@ server {
 ```
 https://www.example.com/wx/index/index
 https://www.example.com/admin/index/index
+https://www.example.com/admin/index/index
 ```
 
-此时，看到后台数据说明反向代理配置成功。
+此时，看到后端数据说明反向代理配置成功。
 
 #### 1.6.2.4 全站加密
 
@@ -1068,16 +1040,17 @@ http://www.example.com
 > 本人对nginx也不了解，仅仅依靠网络知识配置了简单的效果。
 > 更多配置方法和功能，请开发者自行学习。
 
-### 1.6.3 小程序端上线
+### 1.6.3 小商场上线
 
-这里参考小程序官方文档，上线自己的小商城。
+在1.6.2.3节"反向代理Spring Boot后端"成功以后，其实小商场的后端已经上线成功。
+这里介绍小商场的前端上线过程：
 
 上线之前需要修改代码或者配置文件：
 1. litemall-wx-api模块的WxOrderController类的payNotify方法的链接换成合适的地址。
 
    注意：
    > 换成什么地址都可以，但是这里不应该暴露出来。也就是说这个地址是微信支付平台
-   > 和这里的小商场后台服务之间的交互API，对外公开会存在安全隐患。
+   > 和这里的小商场后端服务之间的交互API，对外公开会存在安全隐患。
    
 2. litemall-core模块需要配置application-core.yml
 
@@ -1096,16 +1069,16 @@ http://www.example.com
 3. litemall-wx模块的`project.config.json`文件调整相应的值，
    特别是`appid`要设置成开发者申请的appid。
 
-### 1.6.4 管理后台服务上线
+### 1.6.4 管理后台上线
 
-管理后台服务上线，则开发者需要自己的线上环境在以下文件中或代码中修改相应的配置。
+在1.6.2.3节"反向代理Spring Boot后端"成功以后，其实管理后台已经上线成功，
+包括管理后台的前端和后端，会同时对外提供管理后台的前端文件和后端数据。
+当然，这里开发者需要自己的线上环境在以下文件中或代码中修改相应的配置。
 
 1. MySQL数据库设置合适的用户名和密码信息；
-2. 后台服务模块设置合适的配置信息，建议开发者参考deploy/litemall的外部配置文件，
+2. 管理后台后端服务模块设置合适的配置信息，建议开发者参考deploy/litemall的外部配置文件，
    这样可以避免开发者对模块内部的开发配置文件造成修改；
-3. 小商场前端litemall-wx模块`config/api.js`的`WxApiRoot`设置小商场后台服务的服务地址；
-4. 管理后台前端litemall-admin模块`config/prod.env.js`中的`BASE_API`设置管理后台后台服务的服务地址。
-
+3. 管理后台前端litemall-admin模块`config/prod.env.js`中的`BASE_API`设置管理后台后端服务的服务地址。
 
 ### 1.6.5 上线脚本
 
@@ -1115,33 +1088,28 @@ http://www.example.com
 
 以下是部署方案中出现而在上线方案中可以优化的一些步骤。
 
-#### 1.6.6.1 卸载tomcat
-
-如果部署方案中采用tomcat而8080端口访问后台，而这里配置nginx后，
-可以直接采用80端口访问，因此tomcat可以卸载。
-
-#### 1.6.6.2 管理后台前端文件启动优化
+#### 1.6.6.1 管理后台前端文件启动优化
 
 litemall-admin编译得到的前端文件在第一次加载时相当耗时，这里需要一些措施来优化启动速度
 
 * 静态文件托管CDN
 
-  在上节中，建议采用卸载tomcat，采用nginx托管管理后台的静态文件。
+  在上节中，采用Spring Boot来分发管理后台的静态文件。
   这里可以进一步地，把静态文件托管到CDN，当然这里是需要收费。
 
 * gzip压缩
 
 * 动态加载
 
-#### 1.6.6.3 后台服务内部访问
+#### 1.6.6.2 后端服务内部访问
 
-原来后台服务可以通过域名或者IP直接对外服务，而这里采用nginx反向代理后可以
-通过80端口访问后台服务。因此，会存在这样一种结果：
-* 用户可以https协议的80端口访问后台服务（nginx反向代理）
-* 用户也可以通过http协议的8081、8082、8083访问后台服务（spring boot）
+原来后端服务（包括小商城的后端服务和管理后台的后端服务）可以通过域名或者IP直接对外服务，而这里采用nginx反向代理后可以
+通过80端口访问后端服务。因此，会存在这样一种结果：
+* 用户可以https协议的80端口访问后端服务（nginx反向代理）
+* 用户也可以通过http协议的8080访问后端服务（spring boot）
 由于http不是安全的，这里可能存在安全隐患
 
-而如果取消后台服务的对外访问，这样可以保证用户只能采用安全的https协议访问后台服务。
+而如果取消后端服务的对外访问，这样可以保证用户只能采用安全的https协议访问后端服务。
 同时，对外也能屏蔽内部具体技术架构细节。
 
 #### 1.6.6.4 nginx优化
@@ -1180,21 +1148,104 @@ litemall-admin编译得到的前端文件在第一次加载时相当耗时，这
 
 #### 1.7.2.2 .gitlab-ci.yml部署
 
-如果项目源代码托管在gitlab中，可以采用这个配置文件自动部署。
+目前不支持
 
 #### 1.7.2.3 docker部署
 
-目前未支持
+目前不支持
 
-### 1.7.3 Spring Boot配置方案
+### 1.7.3 项目代码风格
 
-当前两个后台服务是采用Spring Boot开发，但是在参数配置方面可能需要这里说明一下，
-帮助开发者更好地理解这里作为多模块Spring Boot的配置方式。
+由于本项目涉及三种技术栈，因此针对这三种技术栈也存在三种代码风格。
 
-#### 1.7.3.1 profile
+如果开发者想要贡献代码，建议尽可能保证代码符合这里的规范。
 
-#### 1.7.3.2 stage
+#### 1.7.3.1 Spring Boot技术栈代码风格
 
-### 1.7.4 项目配置
+这里的代码风格采用IDEA默认代码风格。
 
-这里列出一些项目相关的基本配置信息：
+修改代码后，利用`Code`菜单的`Reformat Code`即可格式化代码。
+
+#### 1.7.3.2 小程序技术栈代码风格
+
+这里的代码风格采用微信开发者工具默认代码风格。
+
+修改代码以后，利用`编辑`菜单的`格式化代码`即可格式化代码。
+
+#### 1.7.3.3 Vue技术栈代码风格
+
+这里的代码风格采用ESLint配置代码风格，具体参考vue-element-admin下项目的
+[ESLint文档](https://panjiachen.github.io/vue-element-admin-site/zh/guide/advanced/eslint.html),
+特别是`vscode 配置 ESLint`内容。
+
+注意：
+> Visual Studio Code编辑器中右键存在`格式化代码`的选项，但是请不要使用这种方式，
+> 因为VSC自带的格式化代码风格和ESLint代码风格可能不完全一致。
+
+### 1.7.4 Spring Boot多模块多阶段配置
+
+目前后端服务采用Spring Boot多模块方案，结构清晰、易于测试。
+
+但是存在一个问题，即多模块配置依赖。
+例如，litemall-db模块存在数据库配置信息，那么其他模块如何引入
+litemall-db模块的配置信息呢？
+
+最简单的方式，就是其他模块把litemall-db模块的配置信息拷贝到自己的
+application配置文件中，但是问题就是数据库信息一旦改变则其他模块又要
+再次手动修改，非常不方便。
+
+目前本项目采用一种基于`spring.profiles.active`的方式，细节如下：
+1. litemall-db模块存在application.yml和application-db.yml两个配置文件，
+    在application-db.yml配置文件中存放数据库配置信息；
+2. litemall-core模块也存在application.yml和application-core.yml两个配置文件,
+    在application-core.yml配置文件中存放core模块的一些配置信息，而在application.yml
+    中存在这样一个配置：
+    ```
+    spring:
+        profiles:
+            active: core, db
+    ```
+    因此，如果单独启动litemall-core模块，则会先读取application.yml配置文件，然后基于
+    系统会根据`spring.profiles.active`读取application-db.yml和application-core.yml配置文件，
+    因此就会自动读取litemall-db模块的配置文件。
+3. 以此类推，在litemall-all模块中存在application.yml配置文件，其中内容是
+    ```
+    spring:
+        profiles:
+            active:  db, core, admin, wx
+    ```
+    因此，系统启动litemall-all模块以后，则会先读取application.yml配置文件，然后基于
+    `spring.profiles.active`进一步读取application-db.yml、application-core.yml、
+    application-admin.yml和application-wx.yml四个模块的配置文件。
+    
+但是，虽然以上方案解决了多模块配置依赖问题，但是又会导致另外一个问题，如何支持不同profile，
+也就是开发阶段、测试阶段和上线阶段配置不同。
+
+这里介绍本项目的思路，就是基于Spring Boot的配置加载顺序，采用外部配置文件覆盖jar包内部配置文件。
+1. 开发阶段，系统的配置信息在模块的resources目录配置文件中；
+2. 测试或者部署阶段，系统打包成一个litemall.jar二进制jar包，jar包内部配置文件是之前
+    开发阶段的配置文件，此时在litemall.jar的同级目录创建相同的配置文件，在这些配置文件则
+    保存了测试或者部署阶段的配置信息。启动litemall.jar时，系统会读取当前目录的配置文件，而
+    不再读取jar包内部的配置文件。
+3. 上线阶段，同样地，在litemall.jar包同级目录创建上线配置文件。
+
+此外，这里还可以采用另外一种思路，如下图：
+![](pic1/1-13.png)
+![](pic1/1-14.png)
+![](pic1/1-15.png)
+其实原理也很简单，就是配置文件采用application-{module}-{profile}.yml来支持不同模块不同阶段的配置需求。
+
+### 1.7.5 前后端校验
+
+本项目是前后端分离项目，当用户或者管理员在系统中输入数据时，
+数据需要进行两层校验。
+
+* 第一层是前端校验，是对参数格式校验。
+* 第二层是后端校验，不仅对参数校验，还会根据业务场景进行校验。
+
+注意
+> 目前项目校验思路是这样，但是实际代码的校验还不完善，
+> 例如前端校验很好
+
+### 1.7.6 后端校验返回码
+
